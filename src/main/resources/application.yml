@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: facturador-sunat
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/db_facturador_api
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: HikariAPI
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+sunat:
+  modo: beta  # Cambiar a "prod" para producción
+  endpoints:
+    factura-beta: https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService
+    factura-prod: https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService
+    resumen-beta: https://e-beta.sunat.gob.pe/ol-ti-itemision-otroscpe-gem-beta/billService
+    resumen-prod: https://e-factura.sunat.gob.pe/ol-ti-itemision-otroscpe-gem/billService
+    gre-auth-beta: https://gre-test.nubefact.com/v1/clientessol
+    gre-auth-prod: https://api-seguridad.sunat.gob.pe/v1/clientessol
+    gre-api-beta:  https://gre-test.nubefact.com/v1
+    gre-api-prod:  https://api.sunat.gob.pe/v1
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 28800000  # 8 horas
+
+encryption:
+  secret-key: ${ENCRYPTION_KEY}
+
+springdoc:
+  api-docs.path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+---
+spring:
+  config.activate.on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:facturador;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  h2.console.enabled: true
+
+jwt.secret: dev-secret-key-solo-para-pruebas-locales-32chars
+encryption.secret-key: dev-encryption-key-32-chars-here!
+sunat.modo: beta

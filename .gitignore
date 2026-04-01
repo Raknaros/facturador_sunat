@@ -1,0 +1,36 @@
+# Claude Code local settings
+.claude/
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spring Boot
+*.pid
+application-local.yml
+application-local.properties
+
+# Secrets (never commit)
+*.p12
+*.pfx
+*.jks
+.env
