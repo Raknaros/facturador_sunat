@@ -6,6 +6,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class EmisionRequest {
@@ -28,6 +29,30 @@ public class EmisionRequest {
     private List<ItemDto> items;
 
     private String observaciones;
+
+    /**
+     * Forma de pago según Resolución SUNAT 000193-2020.
+     * Valores: "Contado" (default) o "Credito".
+     * Si es null se asume Contado.
+     */
+    private String formaPago;
+
+    /**
+     * Cuotas para pago a crédito. Solo aplica cuando formaPago="Credito".
+     * Máximo 10 cuotas práctico (SUNAT no define un límite duro).
+     * La suma de montos debe coincidir con el importe total del comprobante.
+     */
+    @Valid
+    private List<CuotaDto> cuotas = new ArrayList<>();
+
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class CuotaDto {
+        @NotNull @DecimalMin("0.01")
+        private BigDecimal monto;
+
+        @NotNull
+        private LocalDate fechaVencimiento;
+    }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class ReceptorDto {

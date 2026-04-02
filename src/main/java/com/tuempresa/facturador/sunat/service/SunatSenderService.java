@@ -60,7 +60,10 @@ public class SunatSenderService {
 
         String tipoDoc    = req.getSerie().startsWith("F") ? "01" : "03";
         String tipoNombre = req.getSerie().startsWith("F") ? "FACTURA" : "BOLETA";
-        String nombreZip  = empresaRuc + "-" + tipoDoc + "-" + req.getSerie() + "-" + correlativo;
+        // SUNAT exige que el correlativo en el nombre del ZIP sea el número entero sin ceros,
+        // igual al que xbuilder pone en cbc:ID (ej: "F001-1", no "F001-00000001")
+        int numCorrelativo = Integer.parseInt(correlativo);
+        String nombreZip  = empresaRuc + "-" + tipoDoc + "-" + req.getSerie() + "-" + numCorrelativo;
 
         SunatResponse sr = enviar(empresaRuc, xmlFirmado, nombreZip, getEndpoint());
 
@@ -107,9 +110,14 @@ public class SunatSenderService {
             String soapBody  = buildSoapEnvelope(nombreArchivo + ".zip", zipBase64);
 
             byte[] responseBytes = enviarSoap(endpoint, soapBody, usuarioSol, passwordSol);
+            log.info("[SOAP] Respuesta SUNAT cruda (primeros 2000 chars):\n{}",
+                new String(responseBytes, StandardCharsets.UTF_8).length() > 2000
+                    ? new String(responseBytes, StandardCharsets.UTF_8).substring(0, 2000) + "..."
+                    : new String(responseBytes, StandardCharsets.UTF_8));
             String cdrBase64     = extraerCdrBase64DeRespuestaSoap(responseBytes);
             byte[] cdrBytes      = Base64.getDecoder().decode(cdrBase64);
             String xmlCdr        = descomprimirZip(cdrBytes);
+            log.info("[CDR] XML CDR completo:\n{}", xmlCdr);
 
             return parsearCdr(xmlCdr);
 
@@ -223,8 +231,19 @@ public class SunatSenderService {
 
     private String descomprimirZip(byte[] zipBytes) throws IOException {
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
-            zis.getNextEntry();
-            return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+            // El CDR de SUNAT puede incluir una entrada "dummy/" antes del XML real.
+            // Iteramos hasta encontrar la primera entrada no-directorio con contenido.
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (!entry.isDirectory()) {
+                    byte[] content = zis.readAllBytes();
+                    if (content.length > 0) {
+                        log.info("[CDR] Entrada ZIP leída: '{}' ({} bytes)", entry.getName(), content.length);
+                        return new String(content, StandardCharsets.UTF_8);
+                    }
+                }
+            }
+            throw new IOException("El ZIP del CDR no contiene ningún archivo XML válido");
         }
     }
 
@@ -233,7 +252,19 @@ public class SunatSenderService {
         dbf.setNamespaceAware(false);
         Document doc = dbf.newDocumentBuilder()
             .parse(new ByteArrayInputStream(soapResponse));
-        return getTagValue(doc, "applicationResponse");
+
+        // Detectar SOAP Fault antes de intentar extraer el CDR
+        NodeList faultNodes = doc.getElementsByTagName("faultstring");
+        if (faultNodes.getLength() > 0) {
+            throw new RuntimeException("SUNAT SOAP Fault: " + faultNodes.item(0).getTextContent());
+        }
+
+        String cdrBase64 = getTagValue(doc, "applicationResponse");
+        if (cdrBase64.isEmpty()) {
+            throw new RuntimeException("SUNAT no devolvió applicationResponse. Respuesta: "
+                + new String(soapResponse, StandardCharsets.UTF_8));
+        }
+        return cdrBase64;
     }
 
     private String getTagValue(Document doc, String tagName) {

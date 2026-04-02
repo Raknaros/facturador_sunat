@@ -115,6 +115,9 @@ Schema SQL for PostgreSQL v2 (single DB):
 - `mysql-connector-j` dependency removed (v2 is PostgreSQL-only)
 - `InternalDataSourceConfig` HikariCP URL binding fixed: replaced `DataSourceBuilder` + `@ConfigurationProperties` with `DataSourceProperties.initializeDataSourceBuilder()` pattern to correctly map `spring.datasource.url` → `jdbcUrl`
 - `XmlBuilderService` rewritten for the real `1.1.4.Final` API (the original code used a non-existent API)
+- **SUNAT error 3244** (`nodo: "/" valor: ""`): caused by MISSING `<cac:PaymentTerms>` (Resolución 000193-2020, vigente abril 2021). xbuilder 1.1.4.Final no lo genera. Fix: `inyectarFormaPago()` en `XmlBuilderService` inyecta `FormaPago=Contado` vía DOM antes de `cac:TaxTotal`.
+- **SUNAT error 2334** (digest mismatch): `ds:Signature` debe ir dentro de `ext:ExtensionContent`, no en el root. Fix en `XmlSignerService`: `DOMSignContext` apunta a `extensionContent`.
+- xbuilder no genera `listID` en `cbc:InvoiceTypeCode` ni `cbc:AddressTypeCode` (`codigoLocal`). Ambos inyectados vía DOM post-processing.
 
 ## Pending Work (Next Sessions)
 

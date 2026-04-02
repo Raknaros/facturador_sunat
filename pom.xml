@@ -69,6 +69,22 @@
             <version>1.1.4.Final</version>
         </dependency>
 
+        <!-- Compatibilidad javax.validation para xbuilder 1.1.4.Final:
+             - validation-api: provee javax.validation.* (API)
+             - bval-jsr: proveedor javax.validation vía ServiceLoader
+             xbuilder fue compilado para Java EE; Spring Boot 3 solo tiene
+             jakarta.validation (HV 8.x). Apache BVal coexiste sin conflicto. -->
+        <dependency>
+            <groupId>javax.validation</groupId>
+            <artifactId>validation-api</artifactId>
+            <version>2.0.1.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.bval</groupId>
+            <artifactId>bval-jsr</artifactId>
+            <version>2.0.6</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

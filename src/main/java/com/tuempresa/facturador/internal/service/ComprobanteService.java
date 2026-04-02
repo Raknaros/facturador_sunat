@@ -41,6 +41,29 @@ public class ComprobanteService {
     }
 
     /**
+     * Inicializa (o sobreescribe) el último correlativo de una serie.
+     * Uso exclusivo para migración desde otro facturador.
+     * El siguiente comprobante emitido tendrá el número ultimoNumero + 1.
+     */
+    @Transactional
+    public void inicializarCorrelativo(String ruc, String tipo, String serie, int ultimoNumero) {
+        if (ultimoNumero < 0) {
+            throw new IllegalArgumentException("ultimoNumero no puede ser negativo");
+        }
+        SerieCorrelativo sc = serieRepo.findForUpdate(ruc, tipo, serie)
+            .orElseGet(() -> SerieCorrelativo.builder()
+                .rucEmisor(ruc)
+                .tipo(tipo)
+                .serie(serie)
+                .ultimoNumero(0)
+                .build());
+        sc.setUltimoNumero(ultimoNumero);
+        serieRepo.save(sc);
+        log.info("Correlativo inicializado: RUC={} tipo={} serie={} ultimoNumero={}",
+            ruc, tipo, serie, ultimoNumero);
+    }
+
+    /**
      * Persiste el comprobante y propaga el ID generado al response.
      */
     @Transactional

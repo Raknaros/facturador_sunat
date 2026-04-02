@@ -1,6 +1,6 @@
 # Facturador SUNAT — API REST Multi-empresa
 
-API REST multi-tenant para emisión de comprobantes electrónicos (Facturas, Boletas, Notas de Crédito/Débito, GRE) hacia SUNAT Perú.
+API REST multi-tenant para emisión de comprobantes electrónicos (Facturas, Boletas, Notas de Crédito/Débito, GRE) hacia SUNAT Perú. Validado en ambiente beta SUNAT con facturas reales.
 
 ## Stack Tecnológico
 
@@ -25,9 +25,10 @@ facturador-sunat/
 │   │   ├── controller/
 │   │   │   ├── FacturaController.java        ← POST /api/{ruc}/facturas
 │   │   │   ├── ContribuyenteController.java  ← POST /api/contribuyentes
+│   │   │   ├── SerieController.java          ← PUT /api/{ruc}/series/{serie}/inicializar
 │   │   │   └── GREController.java            ← POST /api/{ruc}/gre/remitente
 │   │   └── dto/
-│   │       ├── EmisionRequest.java
+│   │       ├── EmisionRequest.java           ← Incluye formaPago + cuotas
 │   │       ├── EmisionResponse.java
 │   │       └── RegistroContribuyenteRequest.java
 │   │
@@ -45,11 +46,11 @@ facturador-sunat/
 │   │   │   ├── ComprobanteRepository.java
 │   │   │   └── SerieCorrelativoRepository.java
 │   │   └── service/
-│   │       └── ComprobanteService.java       ← Locking pesimista + persistencia
+│   │       └── ComprobanteService.java       ← Locking pesimista + persistencia + init correlativos
 │   │
 │   ├── sunat/
 │   │   ├── service/
-│   │   │   ├── XmlBuilderService.java        ← Genera XML UBL 2.1 (OpenUBL)
+│   │   │   ├── XmlBuilderService.java        ← Genera XML UBL 2.1 + inyecciones DOM post-xbuilder
 │   │   │   ├── XmlSignerService.java         ← Firma XMLDSig RSA-SHA256
 │   │   │   ├── SunatSenderService.java       ← SOAP a SUNAT + parseo CDR
 │   │   │   ├── CertificadoService.java       ← Carga .p12 en memoria (sin tocar disco)
@@ -101,6 +102,8 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - El esquema se crea automáticamente con `ddl-auto: create-drop`
 
+> **Nota dev:** Los datos (contribuyentes, comprobantes) se pierden al reiniciar. Registra el contribuyente nuevamente después de cada reinicio.
+
 ### Con PostgreSQL real
 
 Requiere una instancia PostgreSQL con la base de datos `db_facturador_api` creada y el schema de `src/main/resources/db/schema_internal.sql` aplicado.
@@ -129,13 +132,28 @@ docker-compose down
 
 ---
 
-## Primer Test — Flujo completo en modo dev
+## Endpoints API
 
-Levanta la API en modo dev y sigue estos pasos con `curl` (o desde Swagger UI).
+| Método | Ruta | Descripción | Estado |
+|--------|------|-------------|--------|
+| `POST` | `/api/contribuyentes` | Registrar empresa + credenciales | ✅ |
+| `PUT` | `/api/contribuyentes/{ruc}/certificado` | Renovar certificado digital | ✅ |
+| `PUT` | `/api/contribuyentes/{ruc}/gre-credenciales` | Configurar OAuth GRE | ✅ |
+| `PUT` | `/api/{ruc}/series/{serie}/inicializar` | Inicializar correlativo (migración) | ✅ |
+| `POST` | `/api/{ruc}/facturas` | Emitir factura (síncrono, CDR inmediato) | ✅ |
+| `GET` | `/api/{ruc}/facturas/{id}` | Consultar factura por ID | ✅ |
+| `POST` | `/api/{ruc}/facturas/lote` | Emitir lote de facturas (asíncrono) | 🔄 WIP |
+| `GET` | `/api/{ruc}/facturas/lote/{ticket}` | Consultar estado de ticket | 🔄 WIP |
+| `POST` | `/api/{ruc}/gre/remitente` | Emitir GRE Remitente (asíncrono) | 🔄 WIP |
+| `GET` | `/api/{ruc}/gre/{id}/estado` | Consultar estado GRE | 🔄 WIP |
+
+Swagger UI completo en `http://localhost:8080/swagger-ui.html`.
+
+---
+
+## Flujo Completo — Primer Test en Modo Dev
 
 ### 1. Registrar un contribuyente
-
-> En modo dev el certificado no se valida contra SUNAT, puedes usar cualquier Base64 válido.
 
 ```bash
 curl -s -X POST http://localhost:8080/api/contribuyentes \
@@ -157,25 +175,16 @@ curl -s -X POST http://localhost:8080/api/contribuyentes \
   }'
 ```
 
-**Respuesta esperada:**
-```json
-{
-  "ruc": "20123456789",
-  "razonSocial": "MI EMPRESA SAC",
-  "mensaje": "Contribuyente registrado correctamente",
-  "tieneGre": false
-}
-```
-
-### 2. Emitir una Factura
+### 2. Emitir una Factura — Pago al Contado
 
 ```bash
 curl -s -X POST http://localhost:8080/api/20123456789/facturas \
   -H "Content-Type: application/json" \
   -d '{
     "serie": "F001",
-    "fechaEmision": "2026-03-27",
+    "fechaEmision": "2026-04-02",
     "moneda": "PEN",
+    "formaPago": "Contado",
     "receptor": {
       "tipoDocumento": "6",
       "nroDocumento": "20999888777",
@@ -193,44 +202,74 @@ curl -s -X POST http://localhost:8080/api/20123456789/facturas \
   }'
 ```
 
-> `precioUnitario` se envía con IGV incluido (118.00 = 100 + 18%). El servicio calcula el valor neto internamente.
+> `precioUnitario` se envía **con IGV incluido** (118.00 = 100.00 base + 18.00 IGV). El servicio calcula el desglose internamente.
+> `formaPago` es opcional — si se omite, el sistema asume `"Contado"`.
 
-**Respuesta esperada (en modo beta/dev):**
+### 3. Emitir una Factura — Pago a Crédito con Cuotas
+
+```bash
+curl -s -X POST http://localhost:8080/api/20123456789/facturas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serie": "F001",
+    "fechaEmision": "2026-04-02",
+    "moneda": "PEN",
+    "formaPago": "Credito",
+    "cuotas": [
+      { "monto": 590.00, "fechaVencimiento": "2026-05-02" },
+      { "monto": 590.00, "fechaVencimiento": "2026-06-02" }
+    ],
+    "receptor": {
+      "tipoDocumento": "6",
+      "nroDocumento": "20999888777",
+      "razonSocial": "CLIENTE SA"
+    },
+    "items": [
+      {
+        "descripcion": "Laptop HP",
+        "cantidad": 1,
+        "precioUnitario": 1180.00,
+        "tipoAfectacionIgv": "10"
+      }
+    ]
+  }'
+```
+
+**Respuesta esperada:**
 ```json
 {
   "comprobanteId": 1,
   "serie": "F001",
   "correlativo": "00000001",
+  "numeroCompleto": "F001-00000001",
   "aceptado": true,
   "cdrCodigo": "0",
-  "cdrDescripcion": "La Factura numero ...",
+  "cdrDescripcion": "La Factura numero F001-1, ha sido aceptada",
   "estado": "ACEPTADO"
 }
 ```
 
-### 3. Consultar el comprobante emitido
+### 4. Migración desde otro facturador — Inicializar correlativo
+
+Si la empresa ya emitió comprobantes en otro sistema (ej. hasta F001-00000150), inicializa el contador antes de emitir:
 
 ```bash
-curl -s http://localhost:8080/api/20123456789/facturas/1
+curl -s -X PUT \
+  "http://localhost:8080/api/20123456789/series/F001/inicializar?tipo=FACTURA&ultimoNumero=150"
 ```
 
----
+```json
+{
+  "ruc": "20123456789",
+  "tipo": "FACTURA",
+  "serie": "F001",
+  "ultimoNumero": 150,
+  "proximoNumero": "00000151",
+  "mensaje": "Correlativo inicializado. El próximo comprobante será F001-00000151"
+}
+```
 
-## Endpoints API
-
-| Método | Ruta | Descripción | Estado |
-|--------|------|-------------|--------|
-| `POST` | `/api/contribuyentes` | Registrar empresa + credenciales | ✅ |
-| `PUT` | `/api/contribuyentes/{ruc}/certificado` | Renovar certificado digital | ✅ |
-| `PUT` | `/api/contribuyentes/{ruc}/gre-credenciales` | Configurar OAuth GRE | ✅ |
-| `POST` | `/api/{ruc}/facturas` | Emitir factura (síncrono, CDR inmediato) | ✅ |
-| `POST` | `/api/{ruc}/facturas/lote` | Emitir lote de facturas (asíncrono) | 🔄 WIP |
-| `GET` | `/api/{ruc}/facturas/{id}` | Consultar factura por ID | ✅ |
-| `GET` | `/api/{ruc}/facturas/lote/{ticket}` | Consultar estado de ticket | 🔄 WIP |
-| `POST` | `/api/{ruc}/gre/remitente` | Emitir GRE Remitente (asíncrono) | 🔄 WIP |
-| `GET` | `/api/{ruc}/gre/{id}/estado` | Consultar estado GRE | 🔄 WIP |
-
-Swagger UI completo en `http://localhost:8080/swagger-ui.html`.
+A partir de este punto, las facturas emitidas comenzarán desde `F001-00000151`.
 
 ---
 
@@ -242,9 +281,9 @@ Toda la data vive en PostgreSQL (`db_facturador_api`):
 
 | Tabla | Contenido |
 |-------|-----------|
-| `contribuyentes` | Empresa, credenciales SOL, certificado .p12, token GRE — todo cifrado |
+| `contribuyentes` | Empresa, credenciales SOL, certificado .p12, token GRE — todo cifrado con AES-256-GCM |
 | `comprobantes` | Cabecera de cada comprobante emitido (estado, CDR, ticket) |
-| `series_correlativos` | Contador de correlativos por (RUC, tipo, serie) |
+| `series_correlativos` | Contador de correlativos por (RUC, tipo, serie) con `@Version` optimistic + `PESSIMISTIC_WRITE` |
 
 ### Flujo de Emisión de Factura
 
@@ -252,11 +291,20 @@ Toda la data vive en PostgreSQL (`db_facturador_api`):
 POST /api/{ruc}/facturas
   → FacturaController
   → ComprobanteService.siguienteCorrelativo()   # PESSIMISTIC_WRITE lock → "00000001"
-  → XmlBuilderService.buildFacturaXml()         # Contribuyente de PostgreSQL → XML UBL 2.1
+  → XmlBuilderService.buildFacturaXml()         # xbuilder → XML UBL 2.1 + inyecciones DOM
   → XmlSignerService.firmar()                   # .p12 descifrado en RAM → XMLDSig RSA-SHA256
   → SunatSenderService.enviarFactura()          # ZIP + SOAP POST a SUNAT → CDR
   → ComprobanteService.registrar()              # Persiste cabecera + respuesta CDR
 ```
+
+### Inyecciones DOM post-xbuilder
+
+xbuilder 1.1.4.Final no genera todos los elementos requeridos por SUNAT. `XmlBuilderService` los inyecta vía DOM después de la generación:
+
+| Elemento inyectado | Por qué es necesario |
+|--------------------|----------------------|
+| `cbc:InvoiceTypeCode/@name` | xbuilder lo genera vacío |
+| `cac:PaymentTerms` (FormaPago) | Obligatorio desde Resolución SUNAT 000193-2020 (abril 2021). Sin él: error 3244 |
 
 ### Tenant Isolation
 
@@ -288,25 +336,20 @@ Cambiar a producción: `sunat.modo: prod` en `application.yml`.
 
 ---
 
-## Tests
-
-```bash
-mvn test
-```
-
----
-
 ## Estado del Proyecto
 
 | Componente | Estado |
 |------------|--------|
-| Registro de contribuyentes + encriptación | ✅ Completo |
-| Emisión de facturas (síncrona) | ✅ Completo |
+| Registro de contribuyentes + encriptación AES-256-GCM | ✅ Completo |
+| Emisión de facturas (síncrona, CDR inmediato) | ✅ Completo |
+| FormaPago Contado y Crédito con cuotas | ✅ Completo |
+| Inicialización de correlativos para migración | ✅ Completo |
 | Consulta de comprobantes | ✅ Completo |
 | Series y correlativos con locking pesimista | ✅ Completo |
 | Firma XMLDSig RSA-SHA256 | ✅ Completo |
 | Envío SOAP a SUNAT + parseo CDR | ✅ Completo |
-| JWT (autenticación) | 🔄 Pendiente implementación completa |
+| JWT (autenticación Bearer) | 🔄 Pendiente — estructura en `SecurityConfig`, falta `JwtAuthFilter` |
+| Boletas (controller + endpoint) | 🔄 Pendiente |
 | Emisión en lote (`sendPack`) | 🔄 Pendiente |
 | Polling de tickets | 🔄 Pendiente |
 | GRE — builder XML UBL 2.1 | 🔄 Pendiente |
