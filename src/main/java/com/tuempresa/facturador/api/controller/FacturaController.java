@@ -9,7 +9,6 @@ import com.tuempresa.facturador.sunat.service.XmlSignerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,7 +16,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/{ruc}/facturas")
-@RequiredArgsConstructor
 @Tag(name = "Facturas", description = "Emisión de facturas electrónicas")
 public class FacturaController {
 
@@ -25,6 +23,14 @@ public class FacturaController {
     private final XmlSignerService   xmlSignerService;
     private final SunatSenderService sunatSenderService;
     private final ComprobanteService comprobanteService;
+
+    public FacturaController(XmlBuilderService xmlBuilderService, XmlSignerService xmlSignerService,
+                             SunatSenderService sunatSenderService, ComprobanteService comprobanteService) {
+        this.xmlBuilderService  = xmlBuilderService;
+        this.xmlSignerService   = xmlSignerService;
+        this.sunatSenderService = sunatSenderService;
+        this.comprobanteService = comprobanteService;
+    }
 
     /**
      * Emite UNA factura → sendBill → CDR inmediato.

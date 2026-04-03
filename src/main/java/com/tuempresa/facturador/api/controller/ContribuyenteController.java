@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,12 +17,17 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/contribuyentes")
-@RequiredArgsConstructor
 @Tag(name = "Contribuyentes", description = "Registro y gestión de empresas emisoras")
 public class ContribuyenteController {
 
     private final ContribuyenteRepository contribuyenteRepo;
     private final EncryptionService       encryptionService;
+
+    public ContribuyenteController(ContribuyenteRepository contribuyenteRepo,
+                                   EncryptionService encryptionService) {
+        this.contribuyenteRepo = contribuyenteRepo;
+        this.encryptionService = encryptionService;
+    }
 
     @PostMapping
     @Operation(summary = "Registrar contribuyente y subir credenciales")

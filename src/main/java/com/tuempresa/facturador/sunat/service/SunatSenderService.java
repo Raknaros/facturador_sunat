@@ -6,8 +6,8 @@ import com.tuempresa.facturador.internal.entity.Contribuyente;
 import com.tuempresa.facturador.internal.repository.ContribuyenteRepository;
 import com.tuempresa.facturador.security.EncryptionService;
 import com.tuempresa.facturador.sunat.dto.SunatResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
@@ -33,13 +33,19 @@ import java.util.zip.ZipOutputStream;
  * 4. Recibir respuesta ZIP (CDR)
  * 5. Descomprimir CDR y leer código de respuesta SUNAT
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class SunatSenderService {
+
+    private static final Logger log = LoggerFactory.getLogger(SunatSenderService.class);
 
     private final ContribuyenteRepository contribuyenteRepo;
     private final EncryptionService       encryptionService;
+
+    public SunatSenderService(ContribuyenteRepository contribuyenteRepo,
+                              EncryptionService encryptionService) {
+        this.contribuyenteRepo = contribuyenteRepo;
+        this.encryptionService = encryptionService;
+    }
 
     @Value("${sunat.endpoints.factura-beta}")
     private String endpointFacturaBeta;
@@ -79,6 +85,56 @@ public class SunatSenderService {
             .estado(sr.isAceptado() ? "ACEPTADO" : "RECHAZADO")
             .mensajeError(sr.getMensajeError())
             .build();
+    }
+
+    /**
+     * Valida credenciales SOL contra SUNAT haciendo un ping con getStatus(ticket="00000000").
+     * - HTTP 401 de SUNAT → credenciales inválidas → retorna false
+     * - Cualquier otra respuesta (200, 500 con SOAP fault "ticket no existe") → auth aceptada → retorna true
+     * - Error de red / timeout → lanza RuntimeException
+     */
+    public boolean validarCredencialesSOL(String usuarioSol, String passwordSol) {
+        String soapPing = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                                  xmlns:bil="http://service.sunat.gob.pe">
+                  <soapenv:Header/>
+                  <soapenv:Body>
+                    <bil:getStatus>
+                      <ticket>00000000</ticket>
+                    </bil:getStatus>
+                  </soapenv:Body>
+                </soapenv:Envelope>
+                """;
+        try {
+            URL url = new URL(getEndpoint());
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(15_000);
+
+            String auth = Base64.getEncoder().encodeToString(
+                    (usuarioSol + ":" + passwordSol).getBytes(StandardCharsets.UTF_8));
+            conn.setRequestProperty("Authorization", "Basic " + auth);
+            conn.setRequestProperty("Content-Type", "text/xml; charset=UTF-8");
+            conn.setRequestProperty("SOAPAction", "");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(soapPing.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int httpStatus = conn.getResponseCode();
+            log.debug("[AUTH] Ping SUNAT usuario={} → HTTP {}", usuarioSol, httpStatus);
+
+            // 401 = SUNAT rechazó las credenciales
+            return httpStatus != HttpURLConnection.HTTP_UNAUTHORIZED;
+
+        } catch (Exception e) {
+            log.error("[AUTH] Error al conectar con SUNAT para validar credenciales: {}", e.getMessage());
+            throw new RuntimeException(
+                    "No se pudo verificar las credenciales contra SUNAT: " + e.getMessage(), e);
+        }
     }
 
     public EmisionResponse consultarTicket(String empresaRuc, String ticket) {

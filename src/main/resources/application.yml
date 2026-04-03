@@ -22,6 +22,7 @@ spring:
 
 sunat:
   modo: beta  # Cambiar a "prod" para producción
+  validar-creds-en-login: true  # Ping a SUNAT en /auth/login para confirmar credenciales SOL
   endpoints:
     factura-beta: https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService
     factura-prod: https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService
@@ -34,7 +35,7 @@ sunat:
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration-ms: 28800000  # 8 horas
+  expiration-ms: 43200000  # 12 horas
 
 encryption:
   secret-key: ${ENCRYPTION_KEY}
@@ -61,3 +62,4 @@ spring:
 jwt.secret: dev-secret-key-solo-para-pruebas-locales-32chars
 encryption.secret-key: dev-encryption-key-32-chars-here
 sunat.modo: beta
+sunat.validar-creds-en-login: false  # Dev: no hay conexión real a SUNAT, saltar ping

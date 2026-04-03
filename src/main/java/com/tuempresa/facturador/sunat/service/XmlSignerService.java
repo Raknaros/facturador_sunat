@@ -1,7 +1,7 @@
 package com.tuempresa.facturador.sunat.service;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -31,17 +31,20 @@ import java.util.Collections;
  * - DigestMethod + SignatureMethod: SHA-256 / RSA-SHA256
  * - Serialización: ByteArrayOutputStream → UTF-8 (no StringWriter)
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class XmlSignerService {
 
+    private static final Logger log = LoggerFactory.getLogger(XmlSignerService.class);
     private static final String NS_EXT =
         "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2";
     private static final String NS_DS =
         "http://www.w3.org/2000/09/xmldsig#";
 
     private final CertificadoService certificadoService;
+
+    public XmlSignerService(CertificadoService certificadoService) {
+        this.certificadoService = certificadoService;
+    }
 
     public String firmar(String empresaRuc, String xmlSinFirma) {
         log.info("[FIRMA] XML sin firmar (primeros 3000 chars):\n{}",

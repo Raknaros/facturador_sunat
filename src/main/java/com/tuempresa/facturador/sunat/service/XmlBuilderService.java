@@ -11,8 +11,8 @@ import io.github.project.openubl.xmlbuilderlib.models.input.common.FirmanteInput
 import io.github.project.openubl.xmlbuilderlib.models.input.common.ProveedorInputModel;
 import io.github.project.openubl.xmlbuilderlib.models.input.standard.DocumentLineInputModel;
 import io.github.project.openubl.xmlbuilderlib.models.input.standard.invoice.InvoiceInputModel;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -39,14 +39,17 @@ import java.util.List;
  * Usa xbuilder 1.1.4.Final (io.github.project-openubl:xbuilder).
  * API: DocumentManager.createXML(InvoiceInputModel, Config).getXml()
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class XmlBuilderService {
 
+    private static final Logger log = LoggerFactory.getLogger(XmlBuilderService.class);
     private static final BigDecimal IGV_RATE = new BigDecimal("0.18");
 
     private final ContribuyenteRepository contribuyenteRepo;
+
+    public XmlBuilderService(ContribuyenteRepository contribuyenteRepo) {
+        this.contribuyenteRepo = contribuyenteRepo;
+    }
 
     public String buildFacturaXml(String empresaRuc, EmisionRequest req, String correlativo) {
         log.debug("Construyendo XML Factura para RUC: {}", empresaRuc);

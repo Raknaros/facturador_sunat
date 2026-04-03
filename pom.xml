@@ -17,6 +17,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <lombok.version>1.18.36</lombok.version>
     </properties>
 
     <dependencies>
@@ -99,18 +100,9 @@
             <version>2.5.0</version>
         </dependency>
 
-        <!-- MapStruct (mapeo de DTOs) -->
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-            <version>1.5.5.Final</version>
-        </dependency>
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct-processor</artifactId>
-            <version>1.5.5.Final</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- MapStruct declarado en el proyecto original pero sin uso actual.
+             Removido para evitar conflictos con Lombok en Java 25.
+             Reactivar junto con annotationProcessorPaths cuando se implemente. -->
 
         <!-- H2 (base de datos en memoria para perfil dev) -->
         <dependency>

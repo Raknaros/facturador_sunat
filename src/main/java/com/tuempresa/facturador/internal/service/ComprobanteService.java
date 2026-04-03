@@ -5,20 +5,26 @@ import com.tuempresa.facturador.internal.entity.Comprobante;
 import com.tuempresa.facturador.internal.entity.SerieCorrelativo;
 import com.tuempresa.facturador.internal.repository.ComprobanteRepository;
 import com.tuempresa.facturador.internal.repository.SerieCorrelativoRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class ComprobanteService {
+
+    private static final Logger log = LoggerFactory.getLogger(ComprobanteService.class);
 
     private final ComprobanteRepository      comprobanteRepo;
     private final SerieCorrelativoRepository serieRepo;
+
+    public ComprobanteService(ComprobanteRepository comprobanteRepo,
+                              SerieCorrelativoRepository serieRepo) {
+        this.comprobanteRepo = comprobanteRepo;
+        this.serieRepo       = serieRepo;
+    }
 
     /**
      * Genera y reserva el siguiente correlativo para la serie.

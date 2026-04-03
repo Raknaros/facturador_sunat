@@ -3,8 +3,8 @@ package com.tuempresa.facturador.sunat.service;
 import com.tuempresa.facturador.internal.entity.Contribuyente;
 import com.tuempresa.facturador.internal.repository.ContribuyenteRepository;
 import com.tuempresa.facturador.security.EncryptionService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -15,13 +15,19 @@ import java.time.LocalDate;
  * Carga el certificado digital (.p12) del contribuyente desde PostgreSQL.
  * El .p12 NUNCA toca el disco — solo vive en memoria durante la operación de firma.
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class CertificadoService {
+
+    private static final Logger log = LoggerFactory.getLogger(CertificadoService.class);
 
     private final ContribuyenteRepository contribuyenteRepo;
     private final EncryptionService       encryptionService;
+
+    public CertificadoService(ContribuyenteRepository contribuyenteRepo,
+                              EncryptionService encryptionService) {
+        this.contribuyenteRepo = contribuyenteRepo;
+        this.encryptionService = encryptionService;
+    }
 
     /**
      * Devuelve un KeyStore PKCS12 listo para usar en la firma XMLDSig.

@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -15,12 +14,15 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/{ruc}/series")
-@RequiredArgsConstructor
 @Validated
 @Tag(name = "Series y Correlativos", description = "Administración de series para migración entre facturadores")
 public class SerieController {
 
     private final ComprobanteService comprobanteService;
+
+    public SerieController(ComprobanteService comprobanteService) {
+        this.comprobanteService = comprobanteService;
+    }
 
     /**
      * Inicializa el contador de una serie para migración.

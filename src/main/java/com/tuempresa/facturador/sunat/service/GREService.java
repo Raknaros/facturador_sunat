@@ -8,8 +8,8 @@ import com.tuempresa.facturador.internal.repository.ComprobanteRepository;
 import com.tuempresa.facturador.internal.repository.ContribuyenteRepository;
 import com.tuempresa.facturador.security.EncryptionService;
 import com.tuempresa.facturador.api.dto.EmisionResponse;
-import lombok.*;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,10 +41,10 @@ import java.util.zip.ZipOutputStream;
  * ESTADO: Esqueleto listo para implementar.
  *         Los métodos buildGreXml() y los DTOs de GRE están marcados con TODO.
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class GREService {
+
+    private static final Logger log = LoggerFactory.getLogger(GREService.class);
 
     private final ContribuyenteRepository contribuyenteRepo;
     private final ComprobanteRepository   comprobanteRepo;
@@ -52,6 +52,20 @@ public class GREService {
     private final XmlBuilderService       xmlBuilderService;
     private final XmlSignerService        xmlSignerService;
     private final ObjectMapper            objectMapper;
+
+    public GREService(ContribuyenteRepository contribuyenteRepo,
+                      ComprobanteRepository comprobanteRepo,
+                      EncryptionService encryptionService,
+                      XmlBuilderService xmlBuilderService,
+                      XmlSignerService xmlSignerService,
+                      ObjectMapper objectMapper) {
+        this.contribuyenteRepo = contribuyenteRepo;
+        this.comprobanteRepo   = comprobanteRepo;
+        this.encryptionService = encryptionService;
+        this.xmlBuilderService = xmlBuilderService;
+        this.xmlSignerService  = xmlSignerService;
+        this.objectMapper      = objectMapper;
+    }
 
     @Value("${sunat.modo}")
     private String modo;

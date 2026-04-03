@@ -4,17 +4,19 @@ import com.tuempresa.facturador.api.dto.EmisionResponse;
 import com.tuempresa.facturador.sunat.service.GREService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/{ruc}/gre")
-@RequiredArgsConstructor
 @Tag(name = "GRE", description = "Guías de Remisión Electrónica (API REST SUNAT + OAuth)")
 public class GREController {
 
     private final GREService greService;
+
+    public GREController(GREService greService) {
+        this.greService = greService;
+    }
 
     /**
      * Emite una GRE Remitente — asíncrono, devuelve ticket.
