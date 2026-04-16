@@ -5,8 +5,9 @@ API REST multi-tenant para emisión de comprobantes electrónicos (Facturas, Bol
 ## Stack Tecnológico
 
 - **Java 21 + Spring Boot 3.3**
-- **PostgreSQL 15** — base de datos única (`db_facturador_api`)
+- **PostgreSQL** — base de datos central, schema `facturador`
 - **H2** — base de datos en memoria para perfil `dev` (sin instalar nada)
+- **Flyway** — migraciones versionadas de schema (automáticas al arrancar)
 - **OpenUBL xbuilder 1.1.4.Final** — generación XML UBL 2.1 (`DocumentManager` + `InvoiceInputModel`)
 - **Spring Security + JWT (jjwt 0.12.5)**
 - **AES-256-GCM** — encriptación de credenciales en reposo
@@ -23,55 +24,58 @@ facturador-sunat/
 ├── src/main/java/com/tuempresa/facturador/
 │   ├── api/
 │   │   ├── controller/
-│   │   │   ├── FacturaController.java        ← POST /api/{ruc}/facturas
-│   │   │   ├── ContribuyenteController.java  ← POST /api/contribuyentes
-│   │   │   ├── SerieController.java          ← PUT /api/{ruc}/series/{serie}/inicializar
-│   │   │   └── GREController.java            ← POST /api/{ruc}/gre/remitente
+│   │   │   ├── AuthController.java              ← POST /auth/login — retorna JWT
+│   │   │   ├── FacturaController.java           ← POST /api/{ruc}/facturas
+│   │   │   ├── ContribuyenteController.java     ← POST /api/contribuyentes
+│   │   │   ├── SerieController.java             ← PUT /api/{ruc}/series/{serie}/inicializar
+│   │   │   └── GREController.java               ← POST /api/{ruc}/gre/remitente
 │   │   └── dto/
-│   │       ├── EmisionRequest.java           ← Incluye formaPago + cuotas
+│   │       ├── EmisionRequest.java              ← Incluye formaPago + cuotas
 │   │       ├── EmisionResponse.java
+│   │       ├── LoginRequest.java
+│   │       ├── LoginResponse.java
 │   │       └── RegistroContribuyenteRequest.java
 │   │
 │   ├── config/
-│   │   ├── InternalDataSourceConfig.java     ← DataSource PostgreSQL único
-│   │   └── SecurityConfig.java               ← JWT + rutas protegidas
+│   │   ├── InternalDataSourceConfig.java        ← DataSource + EntityManagerFactory (schema facturador)
+│   │   └── SecurityConfig.java                  ← JWT filter chain
 │   │
-│   ├── internal/                             ← Persistencia unificada (PostgreSQL)
+│   ├── internal/                                ← Persistencia (schema facturador)
 │   │   ├── entity/
-│   │   │   ├── Contribuyente.java            ← Empresa + credenciales SOL + certificado + GRE
-│   │   │   ├── Comprobante.java              ← Cabecera del comprobante emitido
-│   │   │   └── SerieCorrelativo.java         ← Contador por (RUC, tipo, serie)
+│   │   │   ├── Contribuyente.java
+│   │   │   ├── Comprobante.java
+│   │   │   └── SerieCorrelativo.java
 │   │   ├── repository/
-│   │   │   ├── ContribuyenteRepository.java
-│   │   │   ├── ComprobanteRepository.java
-│   │   │   └── SerieCorrelativoRepository.java
 │   │   └── service/
-│   │       └── ComprobanteService.java       ← Locking pesimista + persistencia + init correlativos
+│   │       └── ComprobanteService.java          ← Locking pesimista + correlativos
 │   │
 │   ├── sunat/
 │   │   ├── service/
-│   │   │   ├── XmlBuilderService.java        ← Genera XML UBL 2.1 + inyecciones DOM post-xbuilder
-│   │   │   ├── XmlSignerService.java         ← Firma XMLDSig RSA-SHA256
-│   │   │   ├── SunatSenderService.java       ← SOAP a SUNAT + parseo CDR
-│   │   │   ├── CertificadoService.java       ← Carga .p12 en memoria (sin tocar disco)
-│   │   │   └── GREService.java               ← GRE REST + OAuth 2.0 (WIP)
+│   │   │   ├── XmlBuilderService.java           ← UBL 2.1 + inyecciones DOM
+│   │   │   ├── XmlSignerService.java            ← XMLDSig RSA-SHA256
+│   │   │   ├── SunatSenderService.java          ← SOAP a SUNAT + parseo CDR
+│   │   │   ├── CertificadoService.java
+│   │   │   └── GREService.java                  ← GRE REST + OAuth 2.0 (WIP)
 │   │   └── dto/
 │   │       └── SunatResponse.java
 │   │
 │   ├── security/
-│   │   └── EncryptionService.java            ← AES-256-GCM (IV aleatorio por cifrado)
+│   │   ├── EncryptionService.java               ← AES-256-GCM
+│   │   ├── JwtService.java                      ← Genera y valida tokens
+│   │   ├── JwtAuthFilter.java                   ← Filtro Bearer + validación RUC en path
+│   │   └── RateLimitService.java                ← 12 intentos/hora por IP
 │   │
 │   └── FacturadorApplication.java
 │
 ├── src/main/resources/
-│   ├── application.yml                       ← Config general + perfil dev (H2)
+│   ├── application.yml
 │   └── db/
-│       ├── schema_internal.sql               ← Schema PostgreSQL actual (v2)
-│       └── schema.sql                        ← Schema legacy (referencia)
+│       └── migration/
+│           └── V1__init.sql                     ← Migración inicial (Flyway)
 │
 ├── docker-compose.yml
-├── pom.xml
-└── CLAUDE.md
+├── Dockerfile
+└── pom.xml
 ```
 
 ---
@@ -100,35 +104,59 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 
 - H2 console: `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:facturador`)
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
-- El esquema se crea automáticamente con `ddl-auto: create-drop`
+- Hibernate crea las tablas bajo el schema `facturador` en memoria con `ddl-auto: create-drop`
 
 > **Nota dev:** Los datos (contribuyentes, comprobantes) se pierden al reiniciar. Registra el contribuyente nuevamente después de cada reinicio.
 
-### Con PostgreSQL real
-
-Requiere una instancia PostgreSQL con la base de datos `db_facturador_api` creada y el schema de `src/main/resources/db/schema_internal.sql` aplicado.
+### Con PostgreSQL central (sin Docker)
 
 ```bash
-DB_USER=xxx DB_PASS=xxx JWT_SECRET=xxx ENCRYPTION_KEY=xxx mvn spring-boot:run
+DB_HOST=tu-servidor DB_PORT=5432 DB_NAME=tu_bd \
+DB_USER=xxx DB_PASS=xxx \
+JWT_SECRET=xxx ENCRYPTION_KEY=xxx \
+mvn spring-boot:run
 ```
+
+Flyway aplica `V1__init.sql` automáticamente al primer arranque — no es necesario ejecutar scripts manualmente.
 
 | Variable | Descripción |
 |----------|-------------|
+| `DB_HOST` | Host del servidor PostgreSQL |
+| `DB_PORT` | Puerto (default: 5432) |
+| `DB_NAME` | Nombre de tu base de datos central |
 | `DB_USER` | Usuario PostgreSQL |
 | `DB_PASS` | Contraseña PostgreSQL |
 | `JWT_SECRET` | Mínimo 32 caracteres para firma JWT |
 | `ENCRYPTION_KEY` | Exactamente 32 caracteres para AES-256-GCM |
 
-### Docker (stack completo)
-
-> **Nota:** El `docker-compose.yml` actual usa la arquitectura legacy (MySQL + PostgreSQL).
-> Para la arquitectura v2 (PostgreSQL único), aplica `schema_internal.sql` manualmente o actualiza el compose.
+### Docker
 
 ```bash
+# 1. Crear .env desde el ejemplo y completar los valores
+cp .env.example .env
+
+# 2. Levantar
 docker-compose up -d
 docker logs facturador_api
 docker-compose down
 ```
+
+La app apunta a tu BD PostgreSQL externa definida en el `.env`. Flyway crea el schema `facturador` y todas las tablas al primer arranque.
+
+---
+
+## Autenticación
+
+Todos los endpoints de emisión requieren Bearer JWT. Flujo:
+
+```
+1. POST /api/contribuyentes    ← registrar empresa (público)
+2. POST /auth/login            ← obtener token (público)
+   { "ruc": "...", "usuarioSol": "...", "passwordSol": "..." }
+3. GET/POST /api/{ruc}/...     ← requiere Authorization: Bearer <token>
+```
+
+El token tiene vigencia de 12 horas. Login incluye rate limiting (12 intentos/hora por IP) y validación opcional contra SUNAT.
 
 ---
 
@@ -136,6 +164,7 @@ docker-compose down
 
 | Método | Ruta | Descripción | Estado |
 |--------|------|-------------|--------|
+| `POST` | `/auth/login` | Login con credenciales SOL — retorna JWT | ✅ |
 | `POST` | `/api/contribuyentes` | Registrar empresa + credenciales | ✅ |
 | `PUT` | `/api/contribuyentes/{ruc}/certificado` | Renovar certificado digital | ✅ |
 | `PUT` | `/api/contribuyentes/{ruc}/gre-credenciales` | Configurar OAuth GRE | ✅ |
@@ -175,14 +204,27 @@ curl -s -X POST http://localhost:8080/api/contribuyentes \
   }'
 ```
 
-### 2. Emitir una Factura — Pago al Contado
+### 2. Login — obtener JWT
+
+```bash
+curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ruc": "20123456789",
+    "usuarioSol": "MODDATOS",
+    "passwordSol": "moddatos"
+  }'
+```
+
+### 3. Emitir una Factura — Pago al Contado
 
 ```bash
 curl -s -X POST http://localhost:8080/api/20123456789/facturas \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{
     "serie": "F001",
-    "fechaEmision": "2026-04-02",
+    "fechaEmision": "2026-04-16",
     "moneda": "PEN",
     "formaPago": "Contado",
     "receptor": {
@@ -203,21 +245,21 @@ curl -s -X POST http://localhost:8080/api/20123456789/facturas \
 ```
 
 > `precioUnitario` se envía **con IGV incluido** (118.00 = 100.00 base + 18.00 IGV). El servicio calcula el desglose internamente.
-> `formaPago` es opcional — si se omite, el sistema asume `"Contado"`.
 
-### 3. Emitir una Factura — Pago a Crédito con Cuotas
+### 4. Emitir una Factura — Pago a Crédito con Cuotas
 
 ```bash
 curl -s -X POST http://localhost:8080/api/20123456789/facturas \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{
     "serie": "F001",
-    "fechaEmision": "2026-04-02",
+    "fechaEmision": "2026-04-16",
     "moneda": "PEN",
     "formaPago": "Credito",
     "cuotas": [
-      { "monto": 590.00, "fechaVencimiento": "2026-05-02" },
-      { "monto": 590.00, "fechaVencimiento": "2026-06-02" }
+      { "monto": 590.00, "fechaVencimiento": "2026-05-16" },
+      { "monto": 590.00, "fechaVencimiento": "2026-06-16" }
     ],
     "receptor": {
       "tipoDocumento": "6",
@@ -249,46 +291,56 @@ curl -s -X POST http://localhost:8080/api/20123456789/facturas \
 }
 ```
 
-### 4. Migración desde otro facturador — Inicializar correlativo
+### 5. Migración desde otro facturador — Inicializar correlativo
 
-Si la empresa ya emitió comprobantes en otro sistema (ej. hasta F001-00000150), inicializa el contador antes de emitir:
+Si la empresa ya emitió comprobantes en otro sistema (ej. hasta F001-00000150):
 
 ```bash
 curl -s -X PUT \
+  -H "Authorization: Bearer <token>" \
   "http://localhost:8080/api/20123456789/series/F001/inicializar?tipo=FACTURA&ultimoNumero=150"
-```
-
-```json
-{
-  "ruc": "20123456789",
-  "tipo": "FACTURA",
-  "serie": "F001",
-  "ultimoNumero": 150,
-  "proximoNumero": "00000151",
-  "mensaje": "Correlativo inicializado. El próximo comprobante será F001-00000151"
-}
 ```
 
 A partir de este punto, las facturas emitidas comenzarán desde `F001-00000151`.
 
 ---
 
+## Migraciones de Schema (Flyway)
+
+Flyway gestiona el schema automáticamente. Para agregar tablas o columnas en futuras versiones, crear un archivo nuevo en `src/main/resources/db/migration/`:
+
+```
+V1__init.sql          ← schema inicial (ya aplicado)
+V2__add_boletas.sql   ← ejemplo de próxima migración
+```
+
+```sql
+-- V2__add_boletas.sql (ejemplo)
+ALTER TABLE facturador.comprobantes ADD COLUMN xml_firmado TEXT;
+```
+
+Al reiniciar la app, Flyway detecta y aplica solo las migraciones pendientes. El historial queda en `facturador.flyway_schema_history`.
+
+---
+
 ## Arquitectura
 
-### Base de Datos Única (v2)
+### Schema `facturador` (BD central)
 
-Toda la data vive en PostgreSQL (`db_facturador_api`):
+Todas las tablas viven bajo el schema `facturador` en tu BD PostgreSQL central:
 
 | Tabla | Contenido |
 |-------|-----------|
-| `contribuyentes` | Empresa, credenciales SOL, certificado .p12, token GRE — todo cifrado con AES-256-GCM |
-| `comprobantes` | Cabecera de cada comprobante emitido (estado, CDR, ticket) |
-| `series_correlativos` | Contador de correlativos por (RUC, tipo, serie) con `@Version` optimistic + `PESSIMISTIC_WRITE` |
+| `facturador.contribuyentes` | Empresa, credenciales SOL, certificado .p12, token GRE — todo cifrado con AES-256-GCM |
+| `facturador.comprobantes` | Cabecera de cada comprobante emitido (estado, CDR, ticket) |
+| `facturador.series_correlativos` | Contador de correlativos por (RUC, tipo, serie) con `PESSIMISTIC_WRITE` |
+| `facturador.flyway_schema_history` | Historial de migraciones aplicadas (gestionado por Flyway) |
 
 ### Flujo de Emisión de Factura
 
 ```
 POST /api/{ruc}/facturas
+  → JwtAuthFilter                               # Valida Bearer token + RUC del path
   → FacturaController
   → ComprobanteService.siguienteCorrelativo()   # PESSIMISTIC_WRITE lock → "00000001"
   → XmlBuilderService.buildFacturaXml()         # xbuilder → XML UBL 2.1 + inyecciones DOM
@@ -297,18 +349,9 @@ POST /api/{ruc}/facturas
   → ComprobanteService.registrar()              # Persiste cabecera + respuesta CDR
 ```
 
-### Inyecciones DOM post-xbuilder
-
-xbuilder 1.1.4.Final no genera todos los elementos requeridos por SUNAT. `XmlBuilderService` los inyecta vía DOM después de la generación:
-
-| Elemento inyectado | Por qué es necesario |
-|--------------------|----------------------|
-| `cbc:InvoiceTypeCode/@name` | xbuilder lo genera vacío |
-| `cac:PaymentTerms` (FormaPago) | Obligatorio desde Resolución SUNAT 000193-2020 (abril 2021). Sin él: error 3244 |
-
 ### Tenant Isolation
 
-El RUC (11 dígitos) es la clave de tenant. Está embebido en cada URL (`/api/{ruc}/...`) y delimita credenciales, correlativos y comprobantes.
+El RUC (11 dígitos) es la clave de tenant. Está embebido en cada URL (`/api/{ruc}/...`) y delimita credenciales, correlativos y comprobantes. El `JwtAuthFilter` verifica que el RUC del token coincida con el del path.
 
 ### Encriptación
 
@@ -332,7 +375,7 @@ Configurados en `application.yml`, modo `beta` por defecto:
 | GRE Auth | `gre-test.nubefact.com/v1/clientessol` | `api-seguridad.sunat.gob.pe/v1/clientessol` |
 | GRE API | `gre-test.nubefact.com/v1` | `api.sunat.gob.pe/v1` |
 
-Cambiar a producción: `sunat.modo: prod` en `application.yml`.
+Cambiar a producción: `SUNAT_MODO=prod` en `.env` (o `sunat.modo: prod` en `application.yml`).
 
 ---
 
@@ -341,6 +384,7 @@ Cambiar a producción: `sunat.modo: prod` en `application.yml`.
 | Componente | Estado |
 |------------|--------|
 | Registro de contribuyentes + encriptación AES-256-GCM | ✅ Completo |
+| Autenticación JWT + rate limiting | ✅ Completo |
 | Emisión de facturas (síncrona, CDR inmediato) | ✅ Completo |
 | FormaPago Contado y Crédito con cuotas | ✅ Completo |
 | Inicialización de correlativos para migración | ✅ Completo |
@@ -348,7 +392,7 @@ Cambiar a producción: `sunat.modo: prod` en `application.yml`.
 | Series y correlativos con locking pesimista | ✅ Completo |
 | Firma XMLDSig RSA-SHA256 | ✅ Completo |
 | Envío SOAP a SUNAT + parseo CDR | ✅ Completo |
-| JWT (autenticación Bearer) | 🔄 Pendiente — estructura en `SecurityConfig`, falta `JwtAuthFilter` |
+| Migraciones automáticas con Flyway | ✅ Completo |
 | Boletas (controller + endpoint) | 🔄 Pendiente |
 | Emisión en lote (`sendPack`) | 🔄 Pendiente |
 | Polling de tickets | 🔄 Pendiente |

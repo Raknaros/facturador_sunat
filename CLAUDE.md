@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Multi-tenant REST API for electronic invoice (comprobante electrónico) emission to Peru's SUNAT tax authority. Handles multiple companies (tenants identified by RUC) for Facturas, Boletas, Notas de Crédito/Débito, and GRE (Guía de Remisión Electrónica).
 
-**Status:** First factura successfully accepted by SUNAT beta (CDR código 0). Core emission flow is working end-to-end.
+**Status:** First factura successfully accepted by SUNAT beta (CDR código 0). Core emission flow is working end-to-end. JWT auth + rate limiting implemented and wired.
 
 ## Commands
 
@@ -23,43 +23,54 @@ SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
 # PowerShell (Windows — entorno del usuario):
 mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 
-# Run con PostgreSQL real (requiere variables de entorno)
-DB_USER=xxx DB_PASS=xxx JWT_SECRET=xxx ENCRYPTION_KEY=xxx mvn spring-boot:run
+# Run con PostgreSQL central (requiere variables de entorno)
+DB_HOST=xxx DB_PORT=5432 DB_NAME=xxx DB_USER=xxx DB_PASS=xxx JWT_SECRET=xxx ENCRYPTION_KEY=xxx mvn spring-boot:run
 
-# Docker (stack completo)
+# Docker (apunta a BD PostgreSQL externa definida en .env)
 docker-compose up -d
 docker logs facturador_api
 docker-compose down
 ```
 
 **Variables de entorno requeridas (producción/staging):**
-- `DB_USER` / `DB_PASS` — credenciales de PostgreSQL (`db_facturador_api`)
+- `DB_HOST` / `DB_PORT` / `DB_NAME` — servidor y base de datos PostgreSQL central
+- `DB_USER` / `DB_PASS` — credenciales PostgreSQL
 - `JWT_SECRET` — mínimo 32 chars para JWT signing
 - `ENCRYPTION_KEY` — exactamente 32 chars para AES-256-GCM
 
-**Perfil `dev`:** usa H2 en memoria con `ddl-auto: create-drop`. No requiere ninguna variable de entorno (valores hardcodeados en el yml). No conecta a SUNAT real.
+**Perfil `dev`:** usa H2 en memoria. Hibernate crea el schema `facturador` y tablas con `ddl-auto: create-drop`. No requiere ninguna variable de entorno. No conecta a SUNAT real.
 **IMPORTANTE dev:** Los datos (contribuyentes, comprobantes) se pierden al reiniciar. Siempre registrar el contribuyente antes de emitir en cada sesión.
 
 Swagger UI disponible en `http://localhost:8080/swagger-ui.html`.
 
 ## Architecture
 
-### Single-Datasource (v2)
+### Single-Schema (v2)
 
-Una sola base de datos PostgreSQL (`db_facturador_api`) con todas las entidades bajo `internal/`:
+Una sola base de datos PostgreSQL central con todas las entidades bajo el schema `facturador`:
 
 | Tabla | Entidad | Contenido |
 |-------|---------|-----------|
-| `contribuyentes` | `Contribuyente` | Empresa + credenciales SOL + certificado .p12 + GRE OAuth |
-| `comprobantes` | `Comprobante` | Cabecera de cada comprobante emitido |
-| `series_correlativos` | `SerieCorrelativo` | Contador por (RUC, tipo, serie) |
+| `facturador.contribuyentes` | `Contribuyente` | Empresa + credenciales SOL + certificado .p12 + GRE OAuth |
+| `facturador.comprobantes` | `Comprobante` | Cabecera de cada comprobante emitido |
+| `facturador.series_correlativos` | `SerieCorrelativo` | Contador por (RUC, tipo, serie) |
 
-DataSource configurado en `config/InternalDataSourceConfig.java` usando `DataSourceProperties` para el correcto mapeo `url → jdbcUrl` de HikariCP. El `docker-compose.yml` raíz es legado (dual-DB) — no refleja la arquitectura actual.
+DataSource configurado en `config/InternalDataSourceConfig.java` usando `DataSourceProperties` para el correcto mapeo `url → jdbcUrl` de HikariCP. La propiedad `hibernate.default_schema=facturador` está seteada en `InternalDataSourceConfig.entityManagerFactory()`.
+
+### Flyway — Schema Migrations
+
+Flyway gestiona el schema automáticamente al arrancar. Configurado para el schema `facturador`. Migraciones en `src/main/resources/db/migration/`:
+
+- `V1__init.sql` — schema inicial (tablas contribuyentes, comprobantes, series_correlativos)
+- Futuras: `V2__...sql`, `V3__...sql`, etc.
+
+En dev (H2), Flyway está desactivado — Hibernate usa `ddl-auto: create-drop`.
 
 ### Invoice Emission Flow
 
 ```
 POST /api/{ruc}/facturas
+  → JwtAuthFilter                               # Valida Bearer token + RUC del path
   → FacturaController
   → ComprobanteService.siguienteCorrelativo()   # PESSIMISTIC_WRITE → "00000001"
   → XmlBuilderService.buildFacturaXml()         # Contribuyente de PostgreSQL → UBL 2.1 XML
@@ -70,6 +81,19 @@ POST /api/{ruc}/facturas
   → SunatSenderService.enviarFactura()          # ZIP + SOAP POST a SUNAT → parseo CDR
   → ComprobanteService.registrar()              # Persiste cabecera + estado CDR
 ```
+
+### Authentication Flow
+
+```
+POST /auth/login
+  → RateLimitService.permitir(ip)               # 12 intentos/hora por IP (ventana deslizante)
+  → ContribuyenteRepository.findByRucAndActivoTrue()
+  → EncryptionService.decryptText(passwordSolEnc) + comparación local
+  → SunatSenderService.validarCredencialesSOL() # Ping SUNAT (si validar-creds-en-login=true)
+  → JwtService.generarToken(ruc, usuarioSol)    # JWT HS256, 12h de vigencia
+```
+
+El `JwtAuthFilter` intercepta todas las rutas protegidas, valida el token y verifica que el RUC del claim `sub` coincida con el RUC embebido en el path `/api/{ruc}/...`.
 
 ### Tenant Isolation
 
@@ -144,10 +168,9 @@ Configured in `application.yml` with separate beta and production URLs:
 
 ## Database Schema
 
-Schema SQL for PostgreSQL v2 (single DB):
-- `src/main/resources/db/schema_internal.sql` → PostgreSQL (`db_facturador_api`)
+Migraciones en `src/main/resources/db/migration/`. Flyway las aplica automáticamente al arrancar contra el schema `facturador` de la BD central.
 
-`src/main/resources/db/schema.sql` is legacy (dual-DB, reference only).
+Para agregar tablas o columnas: crear `V{n}__descripcion.sql` con las sentencias DDL prefijadas con `facturador.`.
 
 ## Key Dependencies
 
@@ -158,7 +181,8 @@ Schema SQL for PostgreSQL v2 (single DB):
   - `FirmanteInputModel` MUST be set on invoice — without it SUNAT rejects with empty `cac:Signature`
   - **xsender is NOT used** — SOAP sending is implemented directly in `SunatSenderService` with `HttpURLConnection`
   - **javax.validation compatibility:** xbuilder 1.1.4.Final uses Java EE; Spring Boot 3 uses jakarta. Fix: add `javax.validation:validation-api:2.0.1.Final` + `org.apache.bval:bval-jsr:2.0.6` to pom.xml
-- **jjwt 0.12.5** — JWT authentication (implementation pending)
+- **Flyway** — versionado automático de migraciones de schema
+- **jjwt 0.12.5** — JWT authentication (`Jwts.parser().verifyWith(...)`)
 - **springdoc-openapi 2.5.0** — Swagger UI
 - **Lombok + MapStruct** — boilerplate and DTO mapping
 
@@ -174,9 +198,7 @@ Schema SQL for PostgreSQL v2 (single DB):
 
 ## Pending Work (Next Sessions)
 
-- **JWT**: Implement `JwtService` + `JwtAuthFilter` for Bearer token authentication. Currently all endpoints are `permitAll`. `SecurityConfig` has the structure but the filter chain is missing. Use jjwt 0.12.5 API (`Jwts.parser().verifyWith(...)`).
 - **BoletaController**: No controller exists for `/api/{ruc}/boletas`. Should mirror `FacturaController` but route to `buildBoletaXml()` and use series B001.
 - **Emisión en lote** (`sendPack`): `SunatSenderService.enviarLoteFacturas()` throws `UnsupportedOperationException`. Boletas use async `sendPack` → returns ticket.
 - **Polling de tickets**: `SunatSenderService.consultarTicket()` throws `UnsupportedOperationException`. Needed for boletas en lote and GRE.
 - **GRE XML builder**: `GREService.emitirGreRemitente()` has placeholder XML — needs real UBL 2.1 GRE (Guía de Remisión Electrónica) builder.
-- **docker-compose.yml**: Update to v2 architecture (single PostgreSQL, remove MySQL service).

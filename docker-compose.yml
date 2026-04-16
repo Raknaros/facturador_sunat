@@ -3,62 +3,24 @@ version: '3.9'
 services:
 
   # ─────────────────────────────────────────────
-  # MySQL — Base de datos de facturación
-  # ─────────────────────────────────────────────
-  mysql-facturacion:
-    image: mysql:8.0
-    container_name: mysql_facturacion
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: root_secret
-      MYSQL_DATABASE: db_facturacion
-      MYSQL_USER: facturador
-      MYSQL_PASSWORD: facturador_pass
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01_mysql_schema.sql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-  # ─────────────────────────────────────────────
-  # PostgreSQL — Base de datos contable + credenciales
-  # ─────────────────────────────────────────────
-  postgres-contabilidad:
-    image: postgres:15
-    container_name: postgres_contabilidad
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: db_contabilidad
-      POSTGRES_USER: contabilidad
-      POSTGRES_PASSWORD: contabilidad_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/02_postgres_schema.sql
-
-  # ─────────────────────────────────────────────
   # API Spring Boot
+  # Requiere una BD PostgreSQL central accesible
+  # con el schema "facturador" creado (Flyway lo
+  # crea automáticamente al primer arranque).
   # ─────────────────────────────────────────────
   facturador-api:
     build: .
     container_name: facturador_api
     restart: unless-stopped
-    depends_on:
-      - mysql-facturacion
-      - postgres-contabilidad
     environment:
-      MYSQL_USER: facturador
-      MYSQL_PASS: facturador_pass
-      POSTGRES_USER: contabilidad
-      POSTGRES_PASS: contabilidad_pass
-      JWT_SECRET: tu_clave_jwt_muy_secreta_de_256_bits
-      ENCRYPTION_KEY: tu_clave_aes256_de_32_caracteres!!
-      SPRING_PROFILES_ACTIVE: dev
+      # Base de datos central (apunta a tu servidor PostgreSQL externo)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}?currentSchema=facturador
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      # Seguridad
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # SUNAT: "beta" o "prod"
+      SUNAT_MODO: ${SUNAT_MODO:-beta}
     ports:
       - "8080:8080"
-
-volumes:
-  mysql_data:
-  postgres_data:

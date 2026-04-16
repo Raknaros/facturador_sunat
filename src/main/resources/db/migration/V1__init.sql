@@ -1,9 +1,11 @@
 -- ╔══════════════════════════════════════════════════════════════════╗
--- ║  DB INTERNA DE LA API — Solo datos estrictamente necesarios     ║
--- ║  Motor: PostgreSQL (prod) / H2 (dev/test)                       ║
+-- ║  Migración inicial — schema facturador                          ║
+-- ║  Aplicada automáticamente por Flyway al primer arranque         ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 
-CREATE TABLE IF NOT EXISTS contribuyentes (
+CREATE SCHEMA IF NOT EXISTS facturador;
+
+CREATE TABLE IF NOT EXISTS facturador.contribuyentes (
     ruc                     CHAR(11)        PRIMARY KEY,
 
     -- Datos de la empresa (para generar XML del emisor)
@@ -37,7 +39,7 @@ CREATE TABLE IF NOT EXISTS contribuyentes (
     updated_at              TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS comprobantes (
+CREATE TABLE IF NOT EXISTS facturador.comprobantes (
     id                  BIGSERIAL       PRIMARY KEY,
     ruc_emisor          CHAR(11)        NOT NULL,
     tipo                VARCHAR(20)     NOT NULL,
@@ -55,7 +57,7 @@ CREATE TABLE IF NOT EXISTS comprobantes (
     UNIQUE (ruc_emisor, serie, correlativo)
 );
 
-CREATE TABLE IF NOT EXISTS series_correlativos (
+CREATE TABLE IF NOT EXISTS facturador.series_correlativos (
     id                  BIGSERIAL       PRIMARY KEY,
     ruc_emisor          CHAR(11)        NOT NULL,
     tipo                VARCHAR(20)     NOT NULL,
@@ -66,7 +68,7 @@ CREATE TABLE IF NOT EXISTS series_correlativos (
     UNIQUE (ruc_emisor, tipo, serie)
 );
 
-CREATE INDEX IF NOT EXISTS idx_comp_ruc    ON comprobantes (ruc_emisor);
-CREATE INDEX IF NOT EXISTS idx_comp_estado ON comprobantes (estado);
-CREATE INDEX IF NOT EXISTS idx_comp_ticket ON comprobantes (ticket_sunat) WHERE ticket_sunat IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_cert_vence  ON contribuyentes (cert_vence);
+CREATE INDEX IF NOT EXISTS idx_comp_ruc    ON facturador.comprobantes (ruc_emisor);
+CREATE INDEX IF NOT EXISTS idx_comp_estado ON facturador.comprobantes (estado);
+CREATE INDEX IF NOT EXISTS idx_comp_ticket ON facturador.comprobantes (ticket_sunat) WHERE ticket_sunat IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_cert_vence  ON facturador.contribuyentes (cert_vence);

@@ -104,6 +104,12 @@
              Removido para evitar conflictos con Lombok en Java 25.
              Reactivar junto con annotationProcessorPaths cuando se implemente. -->
 
+        <!-- Flyway — migraciones versionadas de schema (desactivado en perfil dev) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+
         <!-- H2 (base de datos en memoria para perfil dev) -->
         <dependency>
             <groupId>com.h2database</groupId>

@@ -61,6 +61,7 @@ public class InternalDataSourceConfig {
         Map<String, Object> props = new HashMap<>();
         props.put("hibernate.hbm2ddl.auto", ddlAuto);
         props.put("hibernate.show_sql", false);
+        props.put("hibernate.default_schema", "facturador");
         em.setJpaPropertyMap(props);
         return em;
     }
