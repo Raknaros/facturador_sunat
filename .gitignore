@@ -34,3 +34,6 @@ application-local.properties
 *.pfx
 *.jks
 .env
+
+# XMLs de depuración (temporales)
+debug-xml/*.xml

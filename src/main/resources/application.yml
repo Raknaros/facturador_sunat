@@ -25,9 +25,10 @@ spring:
     schemas: facturador
     default-schema: facturador
     locations: classpath:db/migration
+    baseline-on-migrate: true
 
 sunat:
-  modo: beta  # Cambiar a "prod" para producción
+  modo: prod  # Cambiar a "prod" para producción
   validar-creds-en-login: true  # Ping a SUNAT en /auth/login para confirmar credenciales SOL
   endpoints:
     factura-beta: https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService

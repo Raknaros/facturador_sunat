@@ -6,13 +6,13 @@
 CREATE SCHEMA IF NOT EXISTS facturador;
 
 CREATE TABLE IF NOT EXISTS facturador.contribuyentes (
-    ruc                     CHAR(11)        PRIMARY KEY,
+    ruc                     VARCHAR(11)     PRIMARY KEY,
 
     -- Datos de la empresa (para generar XML del emisor)
     razon_social            VARCHAR(200)    NOT NULL,
     nombre_comercial        VARCHAR(200),
     direccion               VARCHAR(300)    NOT NULL,
-    ubigeo                  CHAR(6),
+    ubigeo                  VARCHAR(6),
     departamento            VARCHAR(50),
     provincia               VARCHAR(50),
     distrito                VARCHAR(50),
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS facturador.contribuyentes (
 
 CREATE TABLE IF NOT EXISTS facturador.comprobantes (
     id                  BIGSERIAL       PRIMARY KEY,
-    ruc_emisor          CHAR(11)        NOT NULL,
+    ruc_emisor          VARCHAR(11)     NOT NULL,
     tipo                VARCHAR(20)     NOT NULL,
     serie               VARCHAR(4)      NOT NULL,
     correlativo         VARCHAR(8)      NOT NULL,
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS facturador.comprobantes (
 
 CREATE TABLE IF NOT EXISTS facturador.series_correlativos (
     id                  BIGSERIAL       PRIMARY KEY,
-    ruc_emisor          CHAR(11)        NOT NULL,
+    ruc_emisor          VARCHAR(11)     NOT NULL,
     tipo                VARCHAR(20)     NOT NULL,
     serie               VARCHAR(4)      NOT NULL,
     ultimo_numero       INTEGER         NOT NULL DEFAULT 0,

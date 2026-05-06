@@ -47,6 +47,22 @@ public class ComprobanteService {
     }
 
     /**
+     * Revierte el último correlativo reservado cuando SUNAT no aceptó el documento.
+     * Solo se llama si resp.isAceptado() == false — el correlativo vuelve a estar disponible.
+     */
+    @Transactional
+    public void deshacerCorrelativo(String ruc, String tipo, String serie) {
+        serieRepo.findForUpdate(ruc, tipo, serie).ifPresent(sc -> {
+            if (sc.getUltimoNumero() > 0) {
+                sc.setUltimoNumero(sc.getUltimoNumero() - 1);
+                serieRepo.save(sc);
+                log.warn("Correlativo revertido: RUC={} tipo={} serie={} → contador vuelve a {}",
+                    ruc, tipo, serie, sc.getUltimoNumero());
+            }
+        });
+    }
+
+    /**
      * Inicializa (o sobreescribe) el último correlativo de una serie.
      * Uso exclusivo para migración desde otro facturador.
      * El siguiente comprobante emitido tendrá el número ultimoNumero + 1.

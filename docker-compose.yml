@@ -24,3 +24,5 @@ services:
       SUNAT_MODO: ${SUNAT_MODO:-beta}
     ports:
       - "8080:8080"
+    volumes:
+      - ./debug-xml:/app/debug-xml
